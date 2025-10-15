@@ -1,18 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
-import YouTube from 'react-youtube';
+import YouTube, { YouTubePlayer, YouTubeEvent } from 'react-youtube';
+
+// Define interfaces for our data structures
+interface Sentence {
+  text: string;
+  start: number;
+  end: number;
+}
+
+interface PlayerData {
+  videoId: string;
+  sentences: Sentence[];
+}
 
 function App() {
-  const [url, setUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [playerData, setPlayerData] = useState(null); // { videoId, sentences }
+  const [url, setUrl] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [playerData, setPlayerData] = useState<PlayerData | null>(null);
 
-  const [activeSentenceIndex, setActiveSentenceIndex] = useState(null);
-  const [selectionRange, setSelectionRange] = useState({ start: null, end: null }); // For multi-sentence selection
-  const playerRef = useRef(null);
-  const loopIntervalRef = useRef(null);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
+  const [selectionRange, setSelectionRange] = useState<{ start: number | null; end: number | null }>({ start: null, end: null });
+  const playerRef = useRef<YouTubePlayer | null>(null);
+  const loopIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -34,11 +46,11 @@ function App() {
         throw new Error(errData.error || '서버에서 오류가 발생했습니다.');
       }
 
-      const data = await response.json();
+      const data: PlayerData = await response.json();
       setPlayerData(data);
 
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +63,7 @@ function App() {
     }
   };
 
-  const handleSentenceClick = (sentence, index, event) => {
+  const handleSentenceClick = (sentence: Sentence, index: number, event: React.MouseEvent) => {
     if (!playerRef.current) return;
     stopLoop();
 
@@ -78,7 +90,7 @@ function App() {
   };
 
   const playSelection = () => {
-    if (!playerRef.current || selectionRange.start === null) return;
+    if (!playerRef.current || selectionRange.start === null || selectionRange.end === null || !playerData) return;
     stopLoop();
 
     const startSentence = playerData.sentences[selectionRange.start];
@@ -102,7 +114,7 @@ function App() {
 
 
   // Stop loop when player is paused or ends
-  const onPlayerStateChange = (event) => {
+  const onPlayerStateChange = (event: YouTubeEvent) => {
     if (event.data === YouTube.PlayerState.PAUSED || event.data === YouTube.PlayerState.ENDED) {
       stopLoop();
     }
@@ -127,7 +139,7 @@ function App() {
           <YouTube
             videoId={playerData.videoId}
             opts={{ width: '100%', height: '480' }}
-            onReady={(e) => (playerRef.current = e.target)}
+            onReady={(e: YouTubeEvent) => (playerRef.current = e.target)}
             onStateChange={onPlayerStateChange}
           />
           <div className="controls">
@@ -138,7 +150,7 @@ function App() {
           </div>
           <div className="sentence-list">
             {playerData.sentences.map((sentence, index) => {
-              const isSelected = isSelectionActive && index >= selectionRange.start && index <= selectionRange.end;
+              const isSelected = isSelectionActive && selectionRange.start !== null && selectionRange.end !== null && index >= selectionRange.start && index <= selectionRange.end;
               const isActive = index === activeSentenceIndex && !isSelectionActive;
 
               return (
