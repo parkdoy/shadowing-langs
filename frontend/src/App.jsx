@@ -8,6 +8,7 @@ function App() {
   const [playerData, setPlayerData] = useState(null); // { videoId, sentences }
 
   const [activeSentenceIndex, setActiveSentenceIndex] = useState(null);
+  const [selectionRange, setSelectionRange] = useState({ start: null, end: null }); // For multi-sentence selection
   const playerRef = useRef(null);
   const loopIntervalRef = useRef(null);
 
@@ -16,6 +17,8 @@ function App() {
     setIsLoading(true);
     setError(null);
     setPlayerData(null);
+    setActiveSentenceIndex(null);
+    setSelectionRange({ start: null, end: null });
 
     try {
       const response = await fetch('http://127.0.0.1:5000/process', {
@@ -41,34 +44,62 @@ function App() {
     }
   };
 
-  const handleSentenceClick = (sentence, index) => {
-    if (!playerRef.current) return;
-
-    // Clear previous loop
-    if (loopIntervalRef.current) {
-      clearInterval(loopIntervalRef.current);
-    }
-
-    setActiveSentenceIndex(index);
-    const player = playerRef.current; // 수정된 부분
-    player.seekTo(sentence.start, true);
-    player.playVideo();
-
-    // Set up new loop
-    loopIntervalRef.current = setInterval(() => {
-      const currentTime = player.getCurrentTime();
-      if (currentTime >= sentence.end) {
-        player.seekTo(sentence.start, true);
-      }
-    }, 200);
-  };
-
   const stopLoop = () => {
     if (loopIntervalRef.current) {
       clearInterval(loopIntervalRef.current);
       loopIntervalRef.current = null;
     }
   };
+
+  const handleSentenceClick = (sentence, index, event) => {
+    if (!playerRef.current) return;
+    stopLoop();
+
+    if (event.shiftKey && activeSentenceIndex !== null) {
+        const newStart = Math.min(activeSentenceIndex, index);
+        const newEnd = Math.max(activeSentenceIndex, index);
+        setSelectionRange({ start: newStart, end: newEnd });
+        // We don't start playback here, just select the range.
+    } else {
+        // Regular click: play single sentence
+        setSelectionRange({ start: null, end: null }); // Clear multi-selection
+        setActiveSentenceIndex(index);
+        const player = playerRef.current;
+        player.seekTo(sentence.start, true);
+        player.playVideo();
+
+        loopIntervalRef.current = setInterval(() => {
+            const currentTime = player.getCurrentTime();
+            if (currentTime >= sentence.end) {
+                player.seekTo(sentence.start, true);
+            }
+        }, 200);
+    }
+  };
+
+  const playSelection = () => {
+    if (!playerRef.current || selectionRange.start === null) return;
+    stopLoop();
+
+    const startSentence = playerData.sentences[selectionRange.start];
+    const endSentence = playerData.sentences[selectionRange.end];
+
+    const startTime = startSentence.start;
+    const endTime = endSentence.end;
+
+    const player = playerRef.current;
+    player.seekTo(startTime, true);
+    player.playVideo();
+
+    loopIntervalRef.current = setInterval(() => {
+        const currentTime = player.getCurrentTime();
+        // If current time goes past the end of the selection, loop back to the start
+        if (currentTime >= endTime) {
+            player.seekTo(startTime, true);
+        }
+    }, 200);
+  };
+
 
   // Stop loop when player is paused or ends
   const onPlayerStateChange = (event) => {
@@ -90,6 +121,7 @@ function App() {
       return <div className="status error">오류: {error}</div>;
     }
     if (playerData) {
+      const isSelectionActive = selectionRange.start !== null;
       return (
         <div className="player-container">
           <YouTube
@@ -98,16 +130,27 @@ function App() {
             onReady={(e) => (playerRef.current = e.target)}
             onStateChange={onPlayerStateChange}
           />
+          <div className="controls">
+            {isSelectionActive && (
+              <button onClick={playSelection}>선택 구간 반복</button>
+            )}
+            <button onClick={stopLoop}>반복 중지</button>
+          </div>
           <div className="sentence-list">
-            {playerData.sentences.map((sentence, index) => (
-              <div
-                key={index}
-                className={`sentence ${index === activeSentenceIndex ? 'active' : ''}`}
-                onClick={() => handleSentenceClick(sentence, index)}
-              >
-                {sentence.text}
-              </div>
-            ))}
+            {playerData.sentences.map((sentence, index) => {
+              const isSelected = isSelectionActive && index >= selectionRange.start && index <= selectionRange.end;
+              const isActive = index === activeSentenceIndex && !isSelectionActive;
+
+              return (
+                <div
+                  key={index}
+                  className={`sentence ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+                  onClick={(e) => handleSentenceClick(sentence, index, e)}
+                >
+                  {sentence.text}
+                </div>
+              );
+            })}
           </div>
         </div>
       );
