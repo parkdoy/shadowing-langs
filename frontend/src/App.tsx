@@ -22,7 +22,7 @@ function App() {
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
   const [selectionRange, setSelectionRange] = useState<{ start: number | null; end: number | null }>({ start: null, end: null });
   const playerRef = useRef<YouTubePlayer | null>(null);
-  const loopIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const loopIntervalRef = useRef<number | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
