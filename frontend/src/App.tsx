@@ -9,6 +9,7 @@ interface Sentence {
 }
 
 interface PlayerData {
+  originalUrl: string; // 원본 YouTube URL 추가
   videoId: string;
   sentences: Sentence[];
   title?: string;
@@ -137,8 +138,33 @@ function App() {
       if (!response.ok) {
         throw new Error(`Failed to fetch ${filename}`);
       }
-      const data: PlayerData = await response.json();
-      setPlayerData(data);
+      const rawData = await response.json();
+      let processedData: PlayerData;
+
+      // Attempt to extract videoId from filename
+      const videoIdMatch = filename.match(/_([a-zA-Z0-9-]{11})\.json$/);
+      const videoId = videoIdMatch ? videoIdMatch[1] : 'unknown'; // Default to 'unknown' if not found
+
+      if (Array.isArray(rawData) && rawData.every((item: any) => 'text' in item && 'start' in item && 'end' in item)) {
+        // If rawData is an array of Sentence, construct PlayerData
+        // 기존 파일이 Sentence 배열 형식일 경우 originalUrl은 알 수 없으므로 빈 문자열로 초기화
+        processedData = {
+          originalUrl: '', 
+          videoId: videoId,
+          sentences: rawData,
+          title: filename.replace(/_[a-zA-Z0-9-]{11}\.json$/, '') // Use filename as title
+        };
+      } else if (typeof rawData === 'object' && rawData !== null && 'videoId' in rawData && 'sentences' in rawData) {
+        // If rawData is already PlayerData
+        // 기존 파일이 PlayerData 형식일 경우, originalUrl이 없을 수 있으므로 기본값 처리
+        processedData = {
+          originalUrl: (rawData as any).originalUrl || '', // originalUrl이 없으면 빈 문자열
+          ...(rawData as PlayerData) // 나머지 필드는 그대로 사용
+        };
+      } else {
+        throw new Error('Unsupported file format.');
+      }
+      setPlayerData(processedData);
     } catch (err) {
       setError((err as Error).message);
     } finally {

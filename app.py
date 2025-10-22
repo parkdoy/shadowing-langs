@@ -115,6 +115,7 @@ def process():
                 output_filename = os.path.join(OUTPUT_DIR, f"{safe_title}_{video_id}.json")
 
             final_data = {
+                "originalUrl": video_url, # 원본 YouTube URL 추가
                 "videoId": video_id,
                 "sentences": sentences,
                 "title": video_title
