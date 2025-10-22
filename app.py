@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 import os
 import json
@@ -107,12 +107,26 @@ def process():
             with YoutubeDL({'quiet': True}) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
                 video_id = info_dict.get("id")
-            
+                video_title = info_dict.get('title', 'video')
+                # Sanitize title for filename
+                safe_title = "".join([c for c in video_title if c.isalpha() or c.isdigit()]).rstrip()
+                if not safe_title:
+                    safe_title = "video"
+                output_filename = os.path.join(OUTPUT_DIR, f"{safe_title}_{video_id}.json")
+
             final_data = {
                 "videoId": video_id,
-                "sentences": sentences
+                "sentences": sentences,
+                "title": video_title
             }
-            yield f'data: {json.dumps({"progress": 100, "final_data": final_data})}\n\n'
+
+            # Save final data to file
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                json.dump(final_data, f, ensure_ascii=False, indent=4)
+            
+            final_data_with_filename = {**final_data, "filename": output_filename}
+
+            yield f'data: {json.dumps({"progress": 100, "message": "완료!", "final_data": final_data_with_filename})}\n\n'
 
         except Exception as e:
             error_message = str(e)
@@ -123,6 +137,18 @@ def process():
 
     return Response(generate_progress(), mimetype='text/event-stream')
 
+@app.route("/api/output-files")
+def list_output_files():
+    """output 디렉토리에 있는 .json 파일 목록을 반환합니다."""
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+    files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.json')]
+    return jsonify(files)
+
+@app.route('/output/<path:filename>')
+def serve_output_file(filename):
+    """output 디렉토리의 파일을 제공합니다."""
+    return send_from_directory(OUTPUT_DIR, filename)
 
 @app.route("/audio.mp3")
 def audio_file():

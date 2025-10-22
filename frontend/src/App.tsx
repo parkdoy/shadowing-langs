@@ -11,6 +11,7 @@ interface Sentence {
 interface PlayerData {
   videoId: string;
   sentences: Sentence[];
+  title?: string;
 }
 
 function App() {
@@ -20,12 +21,20 @@ function App() {
   const [playerData, setPlayerData] = useState<PlayerData | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [progressMessage, setProgressMessage] = useState<string>('');
+  const [outputFiles, setOutputFiles] = useState<string[]>([]);
 
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
   const [selectionRange, setSelectionRange] = useState<{ start: number | null; end: number | null }>({ start: null, end: null });
   const [selectionProgress, setSelectionProgress] = useState(0);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const loopIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:5000/api/output-files')
+      .then(res => res.json())
+      .then(files => setOutputFiles(files))
+      .catch(err => console.error("Error fetching output files:", err));
+  }, []);
 
   useEffect(() => {
     if (!playerData || playerData.sentences.length === 0) {
@@ -104,6 +113,10 @@ function App() {
               if (data.final_data) {
                 setPlayerData(data.final_data);
                 setIsLoading(false);
+                // Refetch files after processing is complete
+                fetch('http://127.0.0.1:5000/api/output-files')
+                  .then(res => res.json())
+                  .then(files => setOutputFiles(files));
               }
             }
           }
@@ -112,6 +125,23 @@ function App() {
 
     } catch (err) {
       setError((err as Error).message);
+      setIsLoading(false);
+    }
+  };
+
+  const handleFileClick = async (filename: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`http://127.0.0.1:5000/output/${filename}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${filename}`);
+      }
+      const data: PlayerData = await response.json();
+      setPlayerData(data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -184,7 +214,7 @@ function App() {
   }, []);
 
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading && !playerData) { // only show loading screen if there is no player data yet
       return (
         <div className="status">
           <p>{progressMessage || '처리 중...'}</p>
@@ -205,6 +235,7 @@ function App() {
       const isSelectionActive = selectionRange.start !== null;
       return (
         <div className="player-container">
+          {playerData.title && <h3>{playerData.title}</h3>}
           <YouTube
             videoId={playerData.videoId}
             opts={{ width: '100%', height: '480' }}
@@ -247,16 +278,30 @@ function App() {
     <div className="App">
       <h2>쉐도잉 영상 추출 및 연습</h2>
       {!playerData && (
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            required
-          />
-          <button type="submit" disabled={isLoading}>추출 시작</button>
-        </form>
+        <>
+          <form onSubmit={handleSubmit}>
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              required
+            />
+            <button type="submit" disabled={isLoading}>추출 시작</button>
+          </form>
+          {outputFiles.length > 0 && (
+            <div className="output-files">
+              <h4>또는 기존 파일 불러오기:</h4>
+              <ul>
+                {outputFiles.map((file) => (
+                  <li key={file} onClick={() => handleFileClick(file)} style={{cursor: 'pointer'}}>
+                    {file.replace(/_[a-zA-Z0-9-]{11}\.json$/, '')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
       {renderContent()}
     </div>
